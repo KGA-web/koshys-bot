@@ -1,106 +1,132 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-import httpx, os, html
+import httpx, os
+from dotenv import load_dotenv
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+load_dotenv()
+
+app = FastAPI(title="Koshys AI Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 GEMINI_KEY = os.environ.get("AIzaSyAxHVcyP2nQGww3-glm7_as447OvAIKTxk", "")
-# Security Fix: Use headers instead of embedding the key in the URL.
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
 
-# Scraped accurately from kgi.edu.in. Fees removed, founded year corrected, and exact courses added.
+# Twilio credentials (for IVR)
+TWILIO_ACCOUNT = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN", "")
+
 KOSHYS_SYSTEM = """
-You are KAIA, the friendly AI assistant for Koshys Group of Institutions (KGI), Bangalore.
-Established in 2003. Premier educational group in Bangalore, Karnataka, India.
-Institutions: Koshys Institute of Management Studies (KIMS), Koshys Institute of Health Sciences (KIHS), Koshys Institute of Hotel Management (KIHM), Koshys Global Academia (CBSE).
+You are KAIA, the friendly AI assistant for Koshys Group of Institutions, Bangalore, India.
+Founded in 1988, Koshys is one of Bangalore's premier educational groups.
+
 Courses offered:
-- UG: BBA, B.Com, BCA, BVA (Animation/Graphic/Interior), BHM, B.Sc (Forensic Science, Nursing, MIT, MLT, AT & OT, Renal Dialysis, Respiratory Care), GNM.
-- PG: MBA, MCA, M.Sc Nursing, PBBSc Nursing.
-Fees: ABSOLUTELY DO NOT mention any fee amounts. If asked about fees, instruct the user to call 808 866 0000 or visit www.kgi.edu.in/ContactKGI to speak with the admissions department.
-Scholarships: Available for merit and economically weaker students.
-Admissions: Apply at apply.kgi.edu.in.
-Campus: Wi-Fi, modern labs, hostels, 1000-bed NABH hospital for training, sports turf, placement cell.
-Contact: 808 866 0000 | www.kgi.edu.in | Hennur Bagalur Road, Kannur P.O., Bangalore 562149.
-Style: Warm, professional, 2-4 sentences. End with 'Is there anything else I can help you with?'
-Respond in the same language the user writes in (English/Kannada/Hindi).
+- Pre-University (PUC): Science, Commerce, Arts streams
+- Undergraduate: B.Com, BBA, BCA, BA, B.Sc (Computer Science, Maths)
+- Postgraduate: MBA, M.Com, MCA
+
+Fee structure (approximate per year):
+- PUC: Rs 15,000 - 30,000
+- UG (B.Com/BBA/BA): Rs 25,000 - 45,000
+- UG (BCA/B.Sc): Rs 30,000 - 55,000
+- PG (MBA/M.Com/MCA): Rs 60,000 - 1,00,000
+Scholarships available for merit students and economically weaker sections.
+
+Admissions:
+- Academic year starts in June
+- Apply online at www.koshys.edu.in
+- Documents: 10th & 12th marks cards, TC, Aadhaar, passport photos
+- Email: admissions@koshys.edu.in
+
+Campus facilities:
+- Smart classrooms, computer labs, central library, Wi-Fi campus
+- Sports ground, auditorium, boys & girls hostel
+- Active placement cell with 200+ company tie-ups
+- NSS, NCC, cultural clubs, annual fest
+
+Contact:
+- Phone: +91-80-XXXXXXXX
+- Email: info@koshys.edu.in
+- Website: www.koshys.edu.in
+- Address: Bangalore, Karnataka, India
+
+Response style:
+- Be warm, helpful, and professional
+- Keep answers concise (2-4 sentences)
+- Always end with "Is there anything else I can help you with?"
+- Respond in the same language the user writes in (English, Kannada, or Hindi)
 """
 
-async def gemini_reply(message: str, history: list = []) -> str:
+async def get_gemini_reply(message: str, history: list = None) -> str:
     contents = []
-    for msg in history[-10:]:
-        role = "user" if msg["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-        
+    if history:
+        for msg in history[-10:]:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
     if not history or history[-1]["content"] != message:
         contents.append({"role": "user", "parts": [{"text": message}]})
-        
+
     payload = {
         "system_instruction": {"parts": [{"text": KOSHYS_SYSTEM}]},
         "contents": contents,
-        # Lowered temperature to heavily reduce hallucination risk on fees
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400} 
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
     }
-    
-    headers = {
-        "x-goog-api-key": GEMINI_KEY, 
-        "Content-Type": "application/json"
-    }
-    
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        res = await client.post(GEMINI_URL, json=payload, headers=headers)
-        data = res.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except KeyError:
-            # Fallback in case of API timeout/error so Twilio doesn't hang up
-            return "I am currently experiencing technical difficulties. Please call 808 866 0000 to speak with our team."
 
-# ── Website chat endpoint
-@app.post("/api/chat")
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        res = await client.post(GEMINI_URL, json=payload)
+        data = res.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+# ── HEALTH CHECK ──────────────────────────────────────────────
+@app.get("/")
+async def root():
+    return {"status": "KAIA backend running", "version": "1.0"}
+
+
+# ── WEBSITE CHAT ──────────────────────────────────────────────
+@app.post("/chat")
 async def chat(request: Request):
     body = await request.json()
-    reply = await gemini_reply(body.get("message", ""), body.get("history", []))
+    message = body.get("message", "")
+    history = body.get("history", [])
+    reply = await get_gemini_reply(message, history)
     return {"reply": reply}
 
-# ── Twilio Voice / IVR endpoints
-@app.get("/api/voice")
+
+# ── VOICE / IVR (Twilio) ──────────────────────────────────────
+@app.get("/voice")
 async def voice_welcome():
     twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="/api/voice" method="POST" speechTimeout="2" language="en-IN">
-    <Say voice="Polly.Aditi" language="en-IN">
-      Namaskara! Welcome to Koshys Group of Institutions.
-      I am KAIA. How can I help you today?
-    </Say>
-  </Gather>
+    <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
+        <Say voice="Polly.Aditi" language="en-IN">
+            Welcome to Koshys Group of Institutions! I am KAIA, your AI assistant.
+            Please speak your question about courses, admissions, or fees now.
+        </Say>
+    </Gather>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
-@app.post("/api/voice")
-async def voice_respond(request: Request):
+
+@app.post("/voice")
+async def voice_call(request: Request):
     form = await request.form()
-    speech = form.get("SpeechResult", "")
-    
-    if not speech:
-        reply = "I didn't catch that. Could you please repeat?"
-    else:
-        reply = await gemini_reply(speech)
-        
-    # Standard Python library escaping is mathematically safer
-    safe_reply = html.escape(reply)
-    
+    speech = form.get("SpeechResult", "Hello, I need information about Koshys.")
+    reply = await get_gemini_reply(speech)
+    # Sanitize reply for XML
+    reply_safe = reply.replace("&", "and").replace("<", "").replace(">", "").replace('"', "")
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="/api/voice" method="POST" speechTimeout="2" language="en-IN">
-    <Say voice="Polly.Aditi" language="en-IN">{safe_reply}</Say>
-  </Gather>
-  <Say voice="Polly.Aditi" language="en-IN">Thank you for calling Koshys. Goodbye!</Say>
+    <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
+        <Say voice="Polly.Aditi" language="en-IN">{reply_safe}</Say>
+    </Gather>
+    <Say voice="Polly.Aditi" language="en-IN">Thank you for calling Koshys. Goodbye!</Say>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
-
-# ── Health check
-@app.get("/api")
-def root():
-    return {"status": "KAIA running on Vercel", "version": "1.1"}
