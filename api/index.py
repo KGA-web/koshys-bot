@@ -1,12 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 import httpx, os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-app = FastAPI(title="Koshys AI Backend")
+app = FastAPI(title="Koshys KAIA Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,10 +12,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_KEY = os.environ.get("AIzaSyAxHVcyP2nQGww3-glm7_as447OvAIKTxk", "")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={AIzaSyARE5aXg63_CnfJ0kMC1xenGZsHg2A6blo}"
 
-# Twilio credentials (for IVR)
 TWILIO_ACCOUNT = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN", "")
 
@@ -32,41 +28,28 @@ Courses offered:
 - Postgraduate: MBA, M.Com, MCA
 
 Fee structure (approximate per year):
-- PUC: Rs 15,000 - 30,000
-- UG (B.Com/BBA/BA): Rs 25,000 - 45,000
-- UG (BCA/B.Sc): Rs 30,000 - 55,000
-- PG (MBA/M.Com/MCA): Rs 60,000 - 1,00,000
-Scholarships available for merit students and economically weaker sections.
+- PUC: Rs 15,000 – 30,000
+- UG (B.Com/BBA/BA): Rs 25,000 – 45,000
+- UG (BCA/B.Sc): Rs 30,000 – 55,000
+- PG (MBA/M.Com/MCA): Rs 60,000 – 1,00,000
+Scholarships available for merit and economically weaker students.
 
-Admissions:
-- Academic year starts in June
-- Apply online at www.koshys.edu.in
-- Documents: 10th & 12th marks cards, TC, Aadhaar, passport photos
-- Email: admissions@koshys.edu.in
+Admissions: Academic year starts June. Apply at www.koshys.edu.in
+Email: admissions@koshys.edu.in | Phone: +91-80-XXXXXXXX
 
-Campus facilities:
-- Smart classrooms, computer labs, central library, Wi-Fi campus
-- Sports ground, auditorium, boys & girls hostel
-- Active placement cell with 200+ company tie-ups
-- NSS, NCC, cultural clubs, annual fest
-
-Contact:
-- Phone: +91-80-XXXXXXXX
-- Email: info@koshys.edu.in
-- Website: www.koshys.edu.in
-- Address: Bangalore, Karnataka, India
+Campus: Smart classrooms, library, Wi-Fi, sports, auditorium, hostel, placement cell (200+ companies).
 
 Response style:
-- Be warm, helpful, and professional
-- Keep answers concise (2-4 sentences)
-- Always end with "Is there anything else I can help you with?"
-- Respond in the same language the user writes in (English, Kannada, or Hindi)
+- Warm, helpful, professional. 2–4 sentences max.
+- End with "Is there anything else I can help you with?"
+- Respond in the same language the user writes in (English/Kannada/Hindi).
+- If unsure, direct to admissions@koshys.edu.in
 """
 
-async def get_gemini_reply(message: str, history: list = None) -> str:
+async def gemini_reply(message: str, history: list = None) -> str:
     contents = []
     if history:
-        for msg in history[-10:]:
+        for msg in (history or [])[-10:]:
             role = "user" if msg["role"] == "user" else "model"
             contents.append({"role": role, "parts": [{"text": msg["content"]}]})
     if not history or history[-1]["content"] != message:
@@ -77,9 +60,8 @@ async def get_gemini_reply(message: str, history: list = None) -> str:
         "contents": contents,
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
     }
-
     async with httpx.AsyncClient(timeout=20.0) as client:
-        res = await client.post(GEMINI_URL, json=payload)
+        res  = await client.post(GEMINI_URL, json=payload)
         data = res.json()
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -87,16 +69,16 @@ async def get_gemini_reply(message: str, history: list = None) -> str:
 # ── HEALTH CHECK ──────────────────────────────────────────────
 @app.get("/")
 async def root():
-    return {"status": "KAIA backend running", "version": "1.0"}
+    return {"status": "KAIA is running on Vercel ✅", "version": "1.0"}
 
 
 # ── WEBSITE CHAT ──────────────────────────────────────────────
 @app.post("/chat")
 async def chat(request: Request):
-    body = await request.json()
+    body    = await request.json()
     message = body.get("message", "")
     history = body.get("history", [])
-    reply = await get_gemini_reply(message, history)
+    reply   = await gemini_reply(message, history)
     return {"reply": reply}
 
 
@@ -105,28 +87,28 @@ async def chat(request: Request):
 async def voice_welcome():
     twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
-        <Say voice="Polly.Aditi" language="en-IN">
-            Welcome to Koshys Group of Institutions! I am KAIA, your AI assistant.
-            Please speak your question about courses, admissions, or fees now.
-        </Say>
-    </Gather>
+  <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
+    <Say voice="Polly.Aditi" language="en-IN">
+      Welcome to Koshys Group of Institutions! I am KAIA, your AI assistant.
+      Please speak your question about admissions, courses, fees, or campus now.
+    </Say>
+  </Gather>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
 
 @app.post("/voice")
 async def voice_call(request: Request):
-    form = await request.form()
-    speech = form.get("SpeechResult", "Hello, I need information about Koshys.")
-    reply = await get_gemini_reply(speech)
-    # Sanitize reply for XML
-    reply_safe = reply.replace("&", "and").replace("<", "").replace(">", "").replace('"', "")
+    form   = await request.form()
+    speech = form.get("SpeechResult", "Tell me about Koshys courses")
+    reply  = await gemini_reply(speech)
+    # Sanitise for TwiML
+    safe = reply.replace("&", "and").replace("<", "").replace(">", "")
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
-        <Say voice="Polly.Aditi" language="en-IN">{reply_safe}</Say>
-    </Gather>
-    <Say voice="Polly.Aditi" language="en-IN">Thank you for calling Koshys. Goodbye!</Say>
+  <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
+    <Say voice="Polly.Aditi" language="en-IN">{safe}</Say>
+  </Gather>
+  <Say voice="Polly.Aditi" language="en-IN">Thank you for calling Koshys. Goodbye!</Say>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
