@@ -1,9 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, HTMLResponse
+from fastapi.responses import Response
 import httpx, os
 
-app = FastAPI(title="Koshys KAIA Backend")
+app = FastAPI(title="Koshys AI Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,103 +12,88 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={AIzaSyARE5aXg63_CnfJ0kMC1xenGZsHg2A6blo}"
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
+MODEL = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
 
-TWILIO_ACCOUNT = os.environ.get("TWILIO_ACCOUNT_SID", "")
-TWILIO_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN", "")
+KGI_SYSTEM = """
+You are KGI Assistant for Koshys Group of Institutions, Bangalore, India.
 
-KOSHYS_SYSTEM = """
-You are KAIA, the friendly AI assistant for Koshys Group of Institutions, Bangalore, India.
-Founded in 1988, Koshys is one of Bangalore's premier educational groups.
+IMPORTANT FACTS:
+- Established: 2003 (23+ years)
+- Location: #31/1, Hennur-Bagalur Road, Kannur P.O., Bengaluru, Karnataka 562149
+- Phone: 808 866 0000
+- Email: info@kgi.edu.in
+- Website: kgi.edu.in
 
-Courses offered:
-- Pre-University (PUC): Science, Commerce, Arts streams
-- Undergraduate: B.Com, BBA, BCA, BA, B.Sc (Computer Science, Maths)
-- Postgraduate: MBA, M.Com, MCA
+INSTITUTIONS:
+1. Koshys Institute of Management Studies (KIMS) - kimsbengaluru.edu.in
+2. Koshys Institute of Health Sciences (KIHS) - kgi.edu.in/KIHS
+3. Koshys Institute of Hotel Management
+4. Koshys Global Academia (CBSE School) - koshysglobalacademia.com
 
-Fee structure (approximate per year):
-- PUC: Rs 15,000 – 30,000
-- UG (B.Com/BBA/BA): Rs 25,000 – 45,000
-- UG (BCA/B.Sc): Rs 30,000 – 55,000
-- PG (MBA/M.Com/MCA): Rs 60,000 – 1,00,000
-Scholarships available for merit and economically weaker students.
+COURSES:
+UG: BBA, BBA Aviation, BCA, BCA Advanced, B.Com, B.Com Logistics, B.Com Advanced, BVA (Animation, Applied Arts, Interior Design), B.Sc Forensic Science
+PG: MBA, MCA
+NURSING: GNM, B.Sc Nursing, PBBSc, M.Sc Nursing
+ALLIED HEALTH: B.Sc Renal Dialysis, B.Sc Respiratory, B.Sc AT & OT, B.Sc MIT, B.Sc MLT
 
-Admissions: Academic year starts June. Apply at www.koshys.edu.in
-Email: admissions@koshys.edu.in | Phone: +91-80-XXXXXXXX
-
-Campus: Smart classrooms, library, Wi-Fi, sports, auditorium, hostel, placement cell (200+ companies).
-
-Response style:
-- Warm, helpful, professional. 2–4 sentences max.
+RULES:
+- For fee questions: "For fee details, please contact our admission team at 808 866 0000 or click the Contact button."
+- For admissions: Direct to apply.kgi.edu.in
+- Keep responses short (2-4 sentences)
+- Be warm and helpful
 - End with "Is there anything else I can help you with?"
-- Respond in the same language the user writes in (English/Kannada/Hindi).
-- If unsure, direct to admissions@koshys.edu.in
 """
 
-async def gemini_reply(message: str, history: list = None) -> str:
-    contents = []
+
+async def get_openai_response(message: str, history: list = None) -> str:
+    if not OPENAI_KEY:
+        return "API key not configured. Please set OPENAI_API_KEY in Vercel environment variables."
+
+    messages = [{"role": "system", "content": KGI_SYSTEM}]
+
     if history:
-        for msg in (history or [])[-10:]:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-    if not history or history[-1]["content"] != message:
-        contents.append({"role": "user", "parts": [{"text": message}]})
+        for msg in history[-10:]:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
 
-    payload = {
-        "system_instruction": {"parts": [{"text": KOSHYS_SYSTEM}]},
-        "contents": contents,
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
+    messages.append({"role": "user", "content": message})
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Content-Type": "application/json",
     }
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        res  = await client.post(GEMINI_URL, json=payload)
-        data = res.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 400,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"I'm experiencing technical issues. Please call 808 866 0000 for immediate assistance."
 
 
-# ── HEALTH CHECK ──────────────────────────────────────────────
 @app.get("/")
 async def root():
-    return {"status": "KAIA is running on Vercel ✅", "version": "1.0"}
+    return {"status": "KGI AI Running", "version": "2.0"}
 
 
-# ── WEBSITE CHAT ──────────────────────────────────────────────
-@app.post("/chat")
+@app.get("/api")
+async def api_check():
+    return {"api": "working", "key_configured": bool(OPENAI_KEY)}
+
+
+@app.post("/api/chat")
 async def chat(request: Request):
-    body    = await request.json()
+    body = await request.json()
     message = body.get("message", "")
     history = body.get("history", [])
-    reply   = await gemini_reply(message, history)
+    reply = await get_openai_response(message, history)
     return {"reply": reply}
-
-
-# ── VOICE / IVR (Twilio) ──────────────────────────────────────
-@app.get("/voice")
-async def voice_welcome():
-    twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
-    <Say voice="Polly.Aditi" language="en-IN">
-      Welcome to Koshys Group of Institutions! I am KAIA, your AI assistant.
-      Please speak your question about admissions, courses, fees, or campus now.
-    </Say>
-  </Gather>
-</Response>"""
-    return Response(content=twiml, media_type="application/xml")
-
-
-@app.post("/voice")
-async def voice_call(request: Request):
-    form   = await request.form()
-    speech = form.get("SpeechResult", "Tell me about Koshys courses")
-    reply  = await gemini_reply(speech)
-    # Sanitise for TwiML
-    safe = reply.replace("&", "and").replace("<", "").replace(">", "")
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Gather input="speech" action="/voice" method="POST" speechTimeout="auto" language="en-IN">
-    <Say voice="Polly.Aditi" language="en-IN">{safe}</Say>
-  </Gather>
-  <Say voice="Polly.Aditi" language="en-IN">Thank you for calling Koshys. Goodbye!</Say>
-</Response>"""
-    return Response(content=twiml, media_type="application/xml")
