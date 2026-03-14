@@ -51,7 +51,7 @@ async def get_openai_response(message: str, history: list = None) -> str:
     if not openai_key:
         return "API key not configured. Please set OPENAI_API_KEY in Vercel environment variables."
 
-    model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
     messages = [{"role": "system", "content": KGI_SYSTEM}]
 
@@ -82,7 +82,7 @@ async def get_openai_response(message: str, history: list = None) -> str:
                 return f"API Error: {data['error'].get('message', 'Unknown error')}"
             return data["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"I'm experiencing technical issues. Please call 808 866 0000 for immediate assistance."
+        return f"Error: {str(e)}. Please call 808 866 0000."
 
 
 @app.get("/")
