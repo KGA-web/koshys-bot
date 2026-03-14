@@ -1,28 +1,55 @@
-# KGI Chatbot - Complete Setup Guide
+# KGI Chatbot - Setup Guide
 
-## Quick Summary of Credentials
-
-### From Google Service Account JSON:
-- **Email**: kgi-947@koshys-bot.iam.gserviceaccount.com
-- **Private Key**: (in .env file)
-
-### What You Need to Get:
-
-| Variable | Where to Get | Free? |
-|----------|--------------|-------|
-| OPENAI_API_KEY | platform.openai.com | $5 credit |
-| GOOGLE_SHEET_ID | Create new sheet → get ID | Yes |
-| VAPI_API_KEY | dashboard.vapi.ai | $5 credit |
+## Overview
+- **Platform**: Website Widget (kgi.edu.in)
+- **Data Storage**: Google Sheets
+- **Tech**: Vercel + Next.js + OpenAI (free tier)
+- **Cost**: FREE (OpenAI $5 credit = thousands of chats)
 
 ---
 
-## Step-by-Step: Google Sheets Setup
+## Step 1: Push to GitHub (Already Done ✓)
 
-1. **Create Google Sheet**
-   - Go to: https://sheet.new
-   - Rename to: "KGI Enquiries"
+---
 
-2. **Add Headers in Row 1:**
+## Step 2: Deploy on Vercel
+
+1. Go to: https://vercel.com
+2. Sign up with GitHub
+3. Click "Add New" → "Project"
+4. Import "koshys-bot" from GitHub
+5. Click "Deploy"
+
+---
+
+## Step 3: Configure Environment Variables
+
+In Vercel dashboard, go to Settings → Environment Variables and add:
+
+| Variable | Value |
+|----------|-------|
+| `OPENAI_API_KEY` | Your OpenAI key (see below) |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `kgi-947@koshys-bot.iam.gserviceaccount.com` |
+| `GOOGLE_PRIVATE_KEY` | Your private key (see below) |
+| `GOOGLE_SHEET_ID` | Your sheet ID (see below) |
+
+---
+
+## Step 4: Get OpenAI API Key
+
+1. Go to: https://platform.openai.com
+2. Sign up (free $5 credit)
+3. API Keys → Create new secret key
+4. Copy the key
+5. Add to Vercel as `OPENAI_API_KEY`
+
+---
+
+## Step 5: Setup Google Sheets
+
+1. Create new sheet: https://sheet.new
+2. Rename to "KGI Enquiries"
+3. Row 1 headers:
    ```
    A1: Timestamp
    B1: Name
@@ -32,51 +59,42 @@
    F1: Inquiry
    G1: Status
    ```
-
-3. **Share with Service Account:**
-   - Click "Share" button
-   - Add: `kgi-947@koshys-bot.iam.gserviceaccount.com`
-   - Role: Viewer
-   - Click "Send"
-
-4. **Get Sheet ID:**
-   - URL looks like: `https://docs.google.com/spreadsheets/d/ABC123XYZ/edit`
-   - Sheet ID = `ABC123XYZ` (put in GOOGLE_SHEET_ID)
+4. Click Share → Add: `kgi-947@koshys-bot.iam.gserviceaccount.com`
+5. Get Sheet ID from URL (between /d/ and /edit)
+6. Add to Vercel as `GOOGLE_SHEET_ID`
 
 ---
 
-## Step-by-Step: Vapi.ai Setup
+## Step 6: Get Private Key
 
-1. Go to: https://dashboard.vapi.ai
-2. Sign up / Login
-3. Copy your API Key from settings
-4. Import the `vapi-assistant.json` file:
-   - Go to Assistants
-   - Click "Create Assistant"
-   - Choose "Import from JSON"
-   - Upload `vapi-assistant.json`
-
-5. Get a phone number:
-   - Click "Phone Numbers"
-   - Get a virtual number
-   - Point it to your Vercel API
+From your downloaded JSON file (koshys-bot-c4c482fa16bd.json):
+- Copy the `private_key` value
+- Add to Vercel as `GOOGLE_PRIVATE_KEY`
 
 ---
 
-## Deployment Checklist
+## Step 7: Add Widget to Website
 
-- [ ] Push to GitHub
-- [ ] Import to Vercel
-- [ ] Add all env variables in Vercel
-- [ ] Deploy
-- [ ] Test chat widget
-- [ ] Test voice call
-- [ ] Check Google Sheet for data
+In kgi.edu.in HTML, add before `</body>`:
+```html
+<script src="https://your-vercel-app.vercel.app/widget.js"></script>
+```
+Or embed the ChatWidget component in your Next.js page.
+
+---
+
+## Features Included
+
+- AI-powered chat with KGI knowledge base
+- Auto-collects: Name, Phone, User Type (Student/Parent), Course
+- Saves all enquiries to Google Sheets
+- Quick buttons: Call 808 866 0000, Apply Now
+- Fee queries → Contact button (no pricing shown)
 
 ---
 
 ## Need Help?
 
-- Email: info@kgi.edu.in
 - Phone: 808 866 0000
+- Email: info@kgi.edu.in
 - Website: kgi.edu.in
