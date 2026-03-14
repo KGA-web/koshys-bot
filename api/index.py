@@ -47,8 +47,11 @@ RULES:
 
 
 async def get_openai_response(message: str, history: list = None) -> str:
-    if not OPENAI_KEY:
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
         return "API key not configured. Please set OPENAI_API_KEY in Vercel environment variables."
+
+    model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
 
     messages = [{"role": "system", "content": KGI_SYSTEM}]
 
@@ -61,11 +64,11 @@ async def get_openai_response(message: str, history: list = None) -> str:
 
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Authorization": f"Bearer {openai_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 400,
@@ -75,6 +78,8 @@ async def get_openai_response(message: str, history: list = None) -> str:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=payload, headers=headers)
             data = resp.json()
+            if "error" in data:
+                return f"API Error: {data['error'].get('message', 'Unknown error')}"
             return data["choices"][0]["message"]["content"]
     except Exception as e:
         return f"I'm experiencing technical issues. Please call 808 866 0000 for immediate assistance."
@@ -87,7 +92,8 @@ async def root():
 
 @app.get("/api")
 async def api_check():
-    return {"api": "working", "key_configured": bool(OPENAI_KEY)}
+    key = os.environ.get("OPENAI_API_KEY", "")
+    return {"api": "working", "key_configured": bool(key)}
 
 
 @app.post("/api/chat")
